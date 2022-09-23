@@ -1,6 +1,5 @@
 <?php
 
-namespace AJUR\DBWrapper;
 
 class PDOQueryBuilder
 {
