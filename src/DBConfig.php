@@ -2,6 +2,7 @@
 
 namespace AJUR\DBWrapper;
 
+use Psr\Log\AbstractLogger;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 
@@ -9,6 +10,76 @@ class DBConfig
 {
     const DEFAULT_CHARSET = 'utf8';
     const DEFAULT_CHARSET_COLLATE = 'utf8_general_ci';
+
+    /**
+     * @var AbstractLogger
+     */
+    public $logger;
+
+    /**
+     * @var array
+     */
+    public $db_config;
+
+    /**
+     * @var string
+     */
+    public $driver;
+
+    /**
+     * @var string
+     */
+    public $hostname;
+
+    /**
+     * @var int
+     */
+    public $port;
+
+    /**
+     * @var string
+     */
+    public $username;
+
+    /**
+     * @var string
+     */
+    public $password;
+
+    /**
+     * @var string
+     */
+    public $database;
+
+    /**
+     * @var bool
+     */
+    public $is_lazy;
+
+    /**
+     * @var string
+     */
+    public $charset;
+
+    /**
+     * @var string
+     */
+    public $charset_collate;
+
+    /**
+     * @var float
+     */
+    public $slow_query_threshold;
+
+    /**
+     * @var int
+     */
+    public $total_queries = 0;
+
+    /**
+     * @var float
+     */
+    public $total_time = 0;
 
     public function __construct(array $connection_config, array $options = [], LoggerInterface $logger = null)
     {
@@ -45,10 +116,25 @@ class DBConfig
         }
 
         // ms
-        $this->slow_query_threshold = (array_key_exists('slow_query_threshold', $this->db_config)) ? (float)$this->db_config['slow_query_threshold'] : 1000;
+        $this->slow_query_threshold = (array_key_exists('slow_query_threshold', $options)) ? (float)$options['slow_query_threshold'] : 1000;
 
-        // microsec
-        $this->slow_query_threshold *= 1000;
+        // $this->is_lazy = array_key_exists('lazy', $options) ? (bool)$options['lazy'] : true;
+        $this->is_lazy = !array_key_exists('lazy', $options) || (bool)$options['lazy']; // if default = false -> remove '!' from first part.
+
+        // microseconds
+        $this->slow_query_threshold /= 1000;
+    }
+
+    /**
+     * @param $time
+     * @param int $decimals
+     * @param string $decimal_separator
+     * @param string $thousands_separator
+     * @return string
+     */
+    public function formatTime($time = 0, int $decimals = 6, string $decimal_separator = '.', string $thousands_separator = ''): string
+    {
+        return number_format($time, $decimals, $decimal_separator, $thousands_separator);
     }
 
 }

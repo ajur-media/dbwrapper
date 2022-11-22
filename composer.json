@@ -1,0 +1,25 @@
+{
+    "name": "ajur-media/dbwrapper",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Karel Wintersky",
+            "email": "karel.wintersky@yandex.ru"
+        }
+    ],
+    "require": {
+        "psr/log": "^1.1",
+        "ext-pdo": "*",
+        "ext-mysqli": "*",
+        "ext-pgsql": "*"
+    },
+    "require-dev": {
+        "karelwintersky/arris.cache": "^v0.6.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "AJUR\\DBWrapper\\": "src/"
+        }
+    }
+}

@@ -8,19 +8,22 @@ use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 
 /**
- * @method PDOStatement|false   prepare($query = '', array $options = [])
+ * @method PDOStatement|false   _prepare($query = '', array $options = [])
+ * @method int|false            exec(string $statement = '')
+ * @method PDOStatement|false   _query($statement, $mode = PDO::ATTR_DEFAULT_FETCH_MODE, ...$fetch_mode_args)
+ *
  * @method bool                 beginTransaction()
  * @method bool                 commit()
- * @method bool                 rollBack()
+ * @method bool                 rollback()
  * @method bool                 inTransaction()
+ *
+ * @method mixed                getAttribute($attribute = '')
  * @method bool                 setAttribute($attribute, $value)
- * @method int|false            exec(string $statement = '')
- * @method PDOStatement|false   query($statement, $mode = PDO::ATTR_DEFAULT_FETCH_MODE, ...$fetch_mode_args)
+ *
  * @method string|false         lastInsertId($name = null)
+ *
  * @method string               errorCode()
  * @method array                errorInfo()
- * @method mixed                getAttribute($attribute = '')
- *
  */
 class DBWrapper
 {
@@ -89,8 +92,6 @@ class DBWrapper
      */
     public $pdo;
 
-    public $last_query_time;
-
     public $last_state = [
         'method'    =>  '',
         'query'     =>  '',
@@ -106,6 +107,8 @@ class DBWrapper
     public function __construct(array $connection_config, array $options = [], LoggerInterface $logger = null)
     {
         $this->config = new DBConfig($connection_config, $options, $logger);
+
+        $this->logger = is_null($logger) ? new NullLogger() : $logger;
 
         if ($this->is_lazy === false) {
             $this->initConnection();
@@ -132,47 +135,93 @@ class DBWrapper
         $this->pdo->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
     }
 
+    private function ensureConnection()
+    {
+        if (empty($this->pdo)) {
+            $this->initConnection();
+        }
+    }
+
     public function __call($function, $args)
     {
-        if (empty($this->dbh)) {
+        if (empty($this->pdo)) {
             $this->initConnection();
         }
 
         $this->last_state['method'] = $function;
 
-        if (in_array(strtolower($function), [ 'query', 'prepare' ])) {
-            $this->last_state['query'] = $args[0];
-
-            if (preg_match('#^\/\*\s(.+)\s\*\/#', $args[0], $matches)) {
-                $this->last_state['comment'] = $matches[0];
-            };
+        if (in_array(strtolower($function), [ 'prepare' ])) {
+            $this->updateLastState($args);
         }
 
-        // invoke the original method
+        // invoke the original method & calc time cost
         $before_call = microtime(true);
-        $result = call_user_func_array (array($this->pdo, $function), $args);
+        $result = call_user_func_array([$this->pdo, $function], $args);
         $after_call = microtime(true);
 
-        $this->last_state['time'] = $after_call - $before_call;
+        $this->config->total_time += $this->last_state['time'] = $after_call - $before_call;
+        $this->config->total_queries++;
 
-        if ($this->last_state['time'] >= $this->slow_query_threshold) {
-            var_dump('Logging event');
+        if ($this->last_state['time'] >= $this->config->slow_query_threshold) {
             $this->logger->debug($function);
         }
 
         return $result;
     }
 
+    public function query()
+    {
+        if (empty($this->pdo)) {
+            $this->initConnection();
+        }
+
+        $args = func_get_args();
+
+        $this->updateLastState($args);
+
+        $result = call_user_func_array([$this->pdo, 'query'], $args);
+        return new \AJUR\DBWrapper\PDOStatement($result, $this->config);
+    }
+
+    public function prepare()
+    {
+        if (empty($this->pdo)) {
+            $this->initConnection();
+        }
+
+        $args = func_get_args();
+
+        $this->updateLastState($args);
+        $result = call_user_func_array([$this->pdo, 'prepare'], $args);
+        return new \AJUR\DBWrapper\PDOStatement($result, $this->config);
+    }
+
     public function getLastQueryTime(): string
     {
-        return number_format($this->last_state['time'], 6, '.', '');
+        return $this->config->formatTime($this->last_state['time']);
     }
 
     public function getLastState():array
     {
         $result = $this->last_state;
-        $result['time'] = number_format($result['time'], 6, '.', '');
+        $result['time'] = $this->config->formatTime($result['time']);
         return $result;
+    }
+
+    public function getStats()
+    {
+        return [
+            'total_queries' =>  $this->config->total_queries,
+            'total_time'    =>  $this->config->formatTime($this->config->total_time)
+        ];
+    }
+
+    private function updateLastState($args)
+    {
+        $this->last_state['query'] = $args[0];
+        if (preg_match('#^\/\*\s(.+)\s\*\/#', $args[0], $matches)) {
+            $this->last_state['comment'] = $matches[0];
+        };
     }
 }
 
